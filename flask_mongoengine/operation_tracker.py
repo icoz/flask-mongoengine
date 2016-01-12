@@ -35,6 +35,9 @@ updates = []
 removes = []
 response_sizes = []
 
+if sys.version_info >= (3, 0):
+    unicode = str
+
 # Wrap helpers._unpack_response for getting response size
 @functools.wraps(_original_methods['_unpack_response'])
 def _unpack_response(response, *args, **kwargs):
@@ -44,18 +47,17 @@ def _unpack_response(response, *args, **kwargs):
         *args,
         **kwargs
     )
-    response_sizes.append(sys.getsizeof(response) / 1024.0)
+    response_sizes.append(sys.getsizeof(response, len(response)) / 1024.0)
     return result
 
 # Wrap Cursor.insert for getting queries
 @functools.wraps(_original_methods['insert'])
 def _insert(collection_self, doc_or_docs, manipulate=True,
-           safe=False, check_keys=True, **kwargs):
+            safe=None, check_keys=True, **kwargs):
     start_time = time.time()
     result = _original_methods['insert'](
         collection_self,
         doc_or_docs,
-        safe=safe,
         check_keys=check_keys,
         **kwargs
     )
@@ -65,7 +67,6 @@ def _insert(collection_self, doc_or_docs, manipulate=True,
     stack_trace, internal = _tidy_stacktrace()
     inserts.append({
         'document': doc_or_docs,
-        'safe': safe,
         'time': total_time,
         'stack_trace': stack_trace,
         'size': response_sizes[-1] if response_sizes else 0,
@@ -76,14 +77,13 @@ def _insert(collection_self, doc_or_docs, manipulate=True,
 # Wrap Cursor.update for getting queries
 @functools.wraps(_original_methods['update'])
 def _update(collection_self, spec, document, upsert=False,
-           maniuplate=False, safe=False, multi=False, **kwargs):
+            maniuplate=False, safe=None, multi=False, **kwargs):
     start_time = time.time()
     result = _original_methods['update'](
         collection_self,
         spec,
         document,
         upsert=upsert,
-        safe=safe,
         multi=multi,
         **kwargs
     )
@@ -96,7 +96,6 @@ def _update(collection_self, spec, document, upsert=False,
         'upsert': upsert,
         'multi': multi,
         'spec': spec,
-        'safe': safe,
         'time': total_time,
         'stack_trace': stack_trace,
         'size': response_sizes[-1] if response_sizes else 0,
@@ -106,12 +105,11 @@ def _update(collection_self, spec, document, upsert=False,
 
 # Wrap Cursor.remove for getting queries
 @functools.wraps(_original_methods['remove'])
-def _remove(collection_self, spec_or_id, safe=False, **kwargs):
+def _remove(collection_self, spec_or_id, safe=None, **kwargs):
     start_time = time.time()
     result = _original_methods['remove'](
         collection_self,
         spec_or_id,
-        safe=safe,
         **kwargs
     )
     total_time = (time.time() - start_time) * 1000
@@ -120,7 +118,6 @@ def _remove(collection_self, spec_or_id, safe=False, **kwargs):
     stack_trace, internal = _tidy_stacktrace()
     removes.append({
         'spec_or_id': spec_or_id,
-        'safe': safe,
         'time': total_time,
         '   ': stack_trace,
         'size': response_sizes[-1] if response_sizes else 0,
@@ -133,7 +130,7 @@ def _remove(collection_self, spec_or_id, safe=False, **kwargs):
 def _cursor_refresh(cursor_self):
     # Look up __ private instance variables
     def privar(name):
-        return getattr(cursor_self, '_Cursor__{0}'.format(name))
+        return getattr(cursor_self, '_Cursor__{0}'.format(name), None)
 
     if privar('id') is not None:
         # getMore not query - move on
@@ -305,6 +302,9 @@ def _tidy_stacktrace():
             if sys.version_info >= (3, 0):
                 text = ''.join(text).strip()
             else:
-                text = unicode(''.join(text).strip(), errors="ignore")
+                try:
+                    text = unicode(''.join(text).strip())
+                except:
+                    pass
         trace.append((path, line_no, func_name, text, hidden))
     return trace, internal

@@ -1,6 +1,3 @@
-import sys
-sys.path[0:0] = [""]
-
 import unittest
 import datetime
 import flask
@@ -14,7 +11,7 @@ from flask.ext.mongoengine import MongoEngine
 from flask.ext.mongoengine.wtf import model_form
 
 from mongoengine import queryset_manager
-from . import FlaskMongoEngineTestCase
+from tests import FlaskMongoEngineTestCase
 
 
 class WTFormsAppTestCase(FlaskMongoEngineTestCase):
@@ -290,6 +287,23 @@ class WTFormsAppTestCase(FlaskMongoEngineTestCase):
             self.assertEqual(len(choices), 2)
             self.assertFalse(choices[0].checked)
             self.assertFalse(choices[1].checked)
+            
+    def test_modelradiofield(self):
+        with self.app.test_request_context('/'):
+            db = self.db
+        
+            choices = (('male', 'Male'), ('female', 'Female'), ('other', 'Other'))
+        
+            class Poll(db.Document):
+                answer = db.StringField(choices=choices)
+    
+            PollForm = model_form(Poll, field_args={'answer': {'radio': True}})
+        
+            form = PollForm(answer=None)
+            self.assertTrue(form.validate())
+        
+            self.assertEqual(form.answer.type, 'RadioField')
+            self.assertEqual(form.answer.choices, choices)
 
     def test_passwordfield(self):
         with self.app.test_request_context('/'):
@@ -383,6 +397,29 @@ class WTFormsAppTestCase(FlaskMongoEngineTestCase):
             form = BlogPostForm(instance=post)
 
             self.assertEqual(form.title.description, "Some imaginative title to set the world on fire")
+
+    def test_shared_field_args(self):
+        with self.app.test_request_context('/'):
+            db = self.db
+
+            class BlogPost(db.Document):
+                title = db.StringField(required=True)
+                content = db.StringField(required=False)
+
+            shared_field_args = {'title': {'validators': [
+                wtforms.validators.Regexp('test')
+            ]}}
+
+            TitleOnlyForm = model_form(BlogPost, field_args=shared_field_args,
+                                       exclude=['content'])
+            BlogPostForm = model_form(BlogPost, field_args=shared_field_args)
+
+            # ensure shared field_args don't create duplicate validators
+            title_only_form = TitleOnlyForm()
+            self.assertEqual(len(title_only_form.title.validators), 2)
+
+            blog_post_form = BlogPostForm()
+            self.assertEqual(len(blog_post_form.title.validators), 2)
 
     def test_embedded_model_form(self):
         with self.app.test_request_context('/'):

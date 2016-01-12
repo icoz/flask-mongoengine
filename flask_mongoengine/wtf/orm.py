@@ -46,13 +46,17 @@ class ModelConverter(object):
     def convert(self, model, field, field_args):
         kwargs = {
             'label': getattr(field, 'verbose_name', field.name),
-            'description': field.help_text or '',
-            'validators': [],
-            'filters': [],
+            'description': getattr(field, 'help_text', None) or '',
+            'validators': getattr(field, 'validators', None) or [],
+            'filters': getattr(field, 'filters', None) or [],
             'default': field.default,
         }
         if field_args:
             kwargs.update(field_args)
+
+        if kwargs['validators']:
+            # Create a copy of the list since we will be modifying it.
+            kwargs['validators'] = list(kwargs['validators'])
 
         if field.required:
             kwargs['validators'].append(validators.Required())
@@ -68,6 +72,8 @@ class ModelConverter(object):
                 kwargs["coerce"] = self.coerce(ftype)
             if kwargs.pop('multiple', False):
                 return f.SelectMultipleField(**kwargs)
+            if kwargs.pop('radio', False):
+                return f.RadioField(**kwargs)
             return f.SelectField(**kwargs)
 
         ftype = type(field).__name__
@@ -82,8 +88,8 @@ class ModelConverter(object):
     def _string_common(cls, model, field, kwargs):
         if field.max_length or field.min_length:
             kwargs['validators'].append(
-                validators.Length(max=field.max_length or - 1,
-                                  min=field.min_length or - 1))
+                validators.Length(max=field.max_length or -1,
+                                  min=field.min_length or -1))
 
     @classmethod
     def _number_common(cls, model, field, kwargs):
@@ -141,7 +147,7 @@ class ModelConverter(object):
 
     @converts('BinaryField')
     def conv_Binary(self, model, field, kwargs):
-        #TODO: may be set file field that will save file`s data to MongoDB
+        # TODO: may be set file field that will save file`s data to MongoDB
         if field.max_bytes:
             kwargs['validators'].append(validators.Length(max=field.max_bytes))
         return BinaryField(**kwargs)
@@ -169,12 +175,12 @@ class ModelConverter(object):
 
     @converts('SortedListField')
     def conv_SortedList(self, model, field, kwargs):
-        #TODO: sort functionality, may be need sortable widget
+        # TODO: sort functionality, may be need sortable widget
         return self.conv_List(model, field, kwargs)
 
     @converts('GeoLocationField')
     def conv_GeoLocation(self, model, field, kwargs):
-        #TODO: create geo field and widget (also GoogleMaps)
+        # TODO: create geo field and widget (also GoogleMaps)
         return
 
     @converts('ObjectIdField')
